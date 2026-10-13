@@ -72,4 +72,11 @@ public class MagicTouchJj02Coordinator extends AbstractBLEDeviceCoordinator {
     public Class<? extends DeviceSupport> getDeviceSupportClass(final GBDevice device) {
         return MagicTouchJj02Support.class;
     }
+
+    @Override
+    public int[] getSupportedDeviceSpecificSettings(final GBDevice device) {
+        return new int[]{
+                R.xml.devicesettings_magic_touch_jj02,
+        };
+    }
 }

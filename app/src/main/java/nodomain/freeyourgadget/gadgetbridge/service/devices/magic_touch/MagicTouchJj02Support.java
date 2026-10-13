@@ -47,6 +47,8 @@ public class MagicTouchJj02Support extends AbstractBTLESingleDeviceSupport {
 
     private static final UUID CCC_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
+    public static final String PREF_MAGIC_TOUCH_BIND_KEY = "pref_magic_touch_jj02_bind_key";
+
     private List<BluetoothGattCharacteristic> notifiables = new ArrayList<>();
 
     public MagicTouchJj02Support() {
@@ -85,6 +87,11 @@ public class MagicTouchJj02Support extends AbstractBTLESingleDeviceSupport {
     protected TransactionBuilder initializeDevice(final TransactionBuilder builder) {
         builder.setDeviceState(GBDevice.State.INITIALIZING);
         builder.requestMtu(247);
+        if (hasValidBindKey()) {
+            LOG.warn("BLE bind key present, command channel can be encrypted once decoded");
+        } else {
+            LOG.warn("BLE bind key missing or invalid, enter the 32 hex characters in the device settings");
+        }
         for (final BluetoothGattCharacteristic characteristic : notifiables) {
             LOG.warn("Subscribing to {}", characteristic.getUuid());
             builder.notify(characteristic, true);
@@ -103,5 +110,10 @@ public class MagicTouchJj02Support extends AbstractBTLESingleDeviceSupport {
         LOG.warn("NOTIFY {} len={}: {}", characteristic.getUuid(),
                 value != null ? value.length : -1, GB.hexdump(value));
         return true;
+    }
+
+    private boolean hasValidBindKey() {
+        final String bindKey = getDevicePrefs().getString(PREF_MAGIC_TOUCH_BIND_KEY, null);
+        return bindKey != null && bindKey.matches("[0-9a-fA-F]{32}");
     }
 }
