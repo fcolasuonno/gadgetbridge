@@ -191,11 +191,11 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
             is XiaomiScooterTransport.ParsedFrame.KeyExchange -> {
                 if (frame.fromDevice && authStep == AuthStep.EXPECT_PRE_KEY_HEADER) {
                     LOG.debug("Got pre-key header, replaying response")
-                    write(authDataChannel, XiaomiScooterTransport.replayKeyExchangePdu(value))
+                    replayKeyExchange(value)
                     authStep = AuthStep.EXPECT_PRE_KEY_DATA
                 } else if (frame.fromDevice && authStep == AuthStep.EXPECT_PRE_KEY_DATA) {
                     LOG.debug("Got pre-key data, starting login")
-                    write(authDataChannel, XiaomiScooterTransport.replayKeyExchangePdu(value))
+                    replayKeyExchange(value)
                     beginPublicKeyExchange()
                 } else {
                     LOG.warn("Unexpected key-exchange PDU in step {}", authStep)
@@ -258,9 +258,18 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         }
     }
 
+    /**
+     * The device emits pre-key pushes on either 0x0017 or 0x0019 depending on the session,
+     * but only listens for the replay on one of them; replay on both (idempotent).
+     */
+    private fun replayKeyExchange(deviceFrame: ByteArray) {
+        val replay = XiaomiScooterTransport.replayKeyExchangePdu(deviceFrame)
+        write(authDataChannel, replay)
+        write(UUID_CHARACTERISTIC_KEY_EXCHANGE, replay)
+    }
+
     private fun beginPublicKeyExchange() {
-        // NOTE: the scooter writes LOGIN_START (20 00 00 00) to AUTH_CTRL here, but this
-        // device restarts the handshake when it sees it, so it is skipped: straight to SEND.
+        write(UUID_CHARACTERISTIC_AUTH_CTRL, LOGIN_START)
         write(authDataChannel, XiaomiScooterTransport.buildSend(XiaomiScooterTransport.TYPE_DEV_PUBKEY))
         authStep = AuthStep.EXPECT_APP_PUBKEY_RDY
     }
@@ -397,7 +406,8 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         const val PREF_MAGIC_TOUCH_BIND_KEY = "pref_magic_touch_jj02_bind_key"
 
         private val AUTH_START = byteArrayOf(0xa4.toByte())
-        private val LOGIN_START = byteArrayOf(0x20, 0x00, 0x00, 0x00)
+        /** Captured from the vendor app (scooter uses 0x20 here); 4th byte truncated, trying 0x00. */
+        private val LOGIN_START = byteArrayOf(0x24.toByte(), 0x00, 0x00, 0x00)
         private val LOGIN_OK = byteArrayOf(0x21, 0x00, 0x00, 0x00)
         private val LOGIN_FAIL = byteArrayOf(0x22, 0x00, 0x00, 0x00)
     }
