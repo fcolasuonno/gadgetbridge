@@ -1,0 +1,30 @@
+name: Sync from Codeberg upstream
+
+# GitHub mirror of https://codeberg.org/Freeyourgadget/Gadgetbridge
+# Codeberg is the source of truth. This workflow fast-forwards the
+# mirror's master branch to upstream master on a schedule.
+# Feature branches (e.g. xiaomi-band-11) are pushed manually and
+# are never touched by this workflow.
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout mirror master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fast-forward to Codeberg upstream
+        run: |
+          git remote add upstream https://codeberg.org/Freeyourgadget/Gadgetbridge.git
+          git fetch upstream master
+          git reset --hard upstream/master
+          git push origin HEAD:master
