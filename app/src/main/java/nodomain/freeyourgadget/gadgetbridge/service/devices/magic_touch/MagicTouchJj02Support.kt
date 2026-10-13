@@ -112,20 +112,19 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         authDataChannel = UUID_CHARACTERISTIC_AUTH_DATA
 
         builder.setDeviceState(GBDevice.State.INITIALIZING)
-        builder.requestMtu(247)
 
-        builder.notify(UUID_CHARACTERISTIC_AUTH_CTRL, true)
-        builder.notify(UUID_CHARACTERISTIC_AUTH_DATA, true)
-        builder.notify(UUID_CHARACTERISTIC_COMMAND, true)
+        // Exact vendor-app order: subscribe report/cmd/info, version query,
+        // subscribe the login channel, read firmware version, MTU, then AUTH_START.
+        // Notably NOT subscribed: 0x0004/0x0005/0x2A05 and the AUTH_CTRL CCC (that
+        // comes later, right before LOGIN_START).
         builder.notify(UUID_CHARACTERISTIC_REPORT, true)
-        // Extra massager channels (0x0005 status, 0x0019 key-exchange echo, 0x001C info)
-        for (characteristic in extraNotifiables) {
-            builder.notify(characteristic, true)
-        }
-
-        builder.write(UUID_CHARACTERISTIC_AUTH_CTRL, *AUTH_START)
-        // Version query, mirroring the vendor app (0x03 -> chip string like RTL8762C)
+        builder.notify(UUID_CHARACTERISTIC_COMMAND, true)
+        builder.notify(UUID_CHARACTERISTIC_DEVICE_INFO, true)
         builder.write(UUID_CHARACTERISTIC_DEVICE_INFO, 0x03)
+        builder.notify(authDataChannel, true)
+        builder.read(UUID_CHARACTERISTIC_FIRMWARE_VERSION)
+        builder.requestMtu(247)
+        builder.write(UUID_CHARACTERISTIC_AUTH_CTRL, *AUTH_START)
 
         // Initialization finishes asynchronously on LOGIN_OK -- see onLoginOk().
         return builder
@@ -153,6 +152,8 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
             }
 
             UUID_CHARACTERISTIC_KEY_EXCHANGE -> {
+                // Fallback only: with the vendor subscription set the pre-key pushes
+                // arrive on AUTH_DATA instead.
                 LOG.debug("Key-exchange channel frame: {}", GB.hexdump(value))
                 handleAuthData(value)
                 return true
@@ -259,16 +260,17 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
     }
 
     /**
-     * The device emits pre-key pushes on either 0x0017 or 0x0019 depending on the session,
-     * but only listens for the replay on one of them; replay on both (idempotent).
+     * The device emits pre-key pushes on the login channel; the replay goes back there.
      */
     private fun replayKeyExchange(deviceFrame: ByteArray) {
-        val replay = XiaomiScooterTransport.replayKeyExchangePdu(deviceFrame)
-        write(authDataChannel, replay)
-        write(UUID_CHARACTERISTIC_KEY_EXCHANGE, replay)
+        write(authDataChannel, XiaomiScooterTransport.replayKeyExchangePdu(deviceFrame))
     }
 
     private fun beginPublicKeyExchange() {
+        // Vendor order: AUTH_CTRL notifications are only enabled here, just before LOGIN_START.
+        createTransactionBuilder("magic_touch_notify_auth_ctrl")
+            .notify(UUID_CHARACTERISTIC_AUTH_CTRL, true)
+            .queue()
         write(UUID_CHARACTERISTIC_AUTH_CTRL, LOGIN_START)
         write(authDataChannel, XiaomiScooterTransport.buildSend(XiaomiScooterTransport.TYPE_DEV_PUBKEY))
         authStep = AuthStep.EXPECT_APP_PUBKEY_RDY
@@ -402,6 +404,8 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         val UUID_CHARACTERISTIC_COMMAND: UUID = UUID.fromString("0000001a-0000-1000-8000-00805f9b34fb")
         val UUID_CHARACTERISTIC_REPORT: UUID = UUID.fromString("0000001b-0000-1000-8000-00805f9b34fb")
         val UUID_CHARACTERISTIC_DEVICE_INFO: UUID = UUID.fromString("0000001c-0000-1000-8000-00805f9b34fb")
+        /** Firmware version string ("2.1.2"), read-only. */
+        val UUID_CHARACTERISTIC_FIRMWARE_VERSION: UUID = UUID.fromString("00000004-0000-1000-8000-00805f9b34fb")
 
         const val PREF_MAGIC_TOUCH_BIND_KEY = "pref_magic_touch_jj02_bind_key"
 
