@@ -378,7 +378,12 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
 
         val UUID_SERVICE_XIAOMI: UUID = UUID.fromString("0000fe95-0000-1000-8000-00805f9b34fb")
         val UUID_CHARACTERISTIC_AUTH_CTRL: UUID = UUID.fromString("00000010-0000-1000-8000-00805f9b34fb")
-        val UUID_CHARACTERISTIC_AUTH_DATA: UUID = UUID.fromString("00000016-0000-1000-8000-00805f9b34fb")
+        /**
+         * App-to-device login channel. NOTE: this is 0x0017 here, not the scooter's 0x0016:
+         * the snoop proves the 64-247 byte login frames (pubkey, token) go to the characteristic
+         * whose value handle is 0x0018, i.e. UUID 0x0017. The device pushes pre-key PDUs on 0x0019.
+         */
+        val UUID_CHARACTERISTIC_AUTH_DATA: UUID = UUID.fromString("00000017-0000-1000-8000-00805f9b34fb")
         /** The device emits the key-exchange PDUs here instead of AUTH_DATA. */
         val UUID_CHARACTERISTIC_KEY_EXCHANGE: UUID = UUID.fromString("00000019-0000-1000-8000-00805f9b34fb")
         val UUID_CHARACTERISTIC_COMMAND: UUID = UUID.fromString("0000001a-0000-1000-8000-00805f9b34fb")
