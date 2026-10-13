@@ -54,9 +54,10 @@ public class MagicTouchJj02Coordinator extends AbstractBLEDeviceCoordinator {
 
     @Override
     public int getBondingStyle() {
-        // The login channel (0x0017) rejects writes with INSUFFICIENT_AUTHORIZATION
-        // on an unencrypted link: bonding is mandatory, not optional.
-        return BONDING_STYLE_BOND;
+        // No bonding: the vendor app never pairs (zero SMP packets in captures)
+        // and the device rejects pairing attempts. All writes are commands
+        // (write-without-response), like the vendor app.
+        return BONDING_STYLE_NONE;
     }
 
     @Override

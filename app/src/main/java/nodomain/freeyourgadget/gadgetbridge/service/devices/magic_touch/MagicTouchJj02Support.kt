@@ -77,6 +77,11 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         for (service: BluetoothGattService in gatt.services) {
             sb.append("\n  service ").append(service.uuid)
             for (characteristic: BluetoothGattCharacteristic in service.characteristics) {
+                // The vendor app only ever uses write-commands (0x52), including on the
+                // WRITE|NOTIFY characteristics: with-response writes are rejected.
+                if (service.uuid == UUID_SERVICE_XIAOMI) {
+                    characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                }
                 sb.append("\n    char ").append(characteristic.uuid)
                     .append(" props=0x").append(Integer.toHexString(characteristic.properties))
                 for (descriptor: BluetoothGattDescriptor in characteristic.descriptors) {
