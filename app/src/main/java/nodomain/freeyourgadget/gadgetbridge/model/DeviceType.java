@@ -456,6 +456,7 @@ import nodomain.freeyourgadget.gadgetbridge.devices.lefun.VivitarHrBpMonitorActi
 import nodomain.freeyourgadget.gadgetbridge.devices.lenovo.watch9.Watch9DeviceCoordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.lenovo.watchxplus.WatchXPlusDeviceCoordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.liveview.LiveviewCoordinator;
+import nodomain.freeyourgadget.gadgetbridge.devices.magic_touch.MagicTouchJj02Coordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.makibeshr3.MakibesHR3Coordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.marstek.MarstekB2500DeviceCoordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.miband.MiBandCoordinator;
@@ -815,6 +816,7 @@ public enum DeviceType {
     MIJIA_LYWSD03(MijiaLywsd03Coordinator.class),
     MIJIA_XMWSDJ04(MijiaXmwsdj04Coordinator.class),
     MIJIA_MHO_C303(MijiaMhoC303Coordinator.class),
+    MAGIC_TOUCH_JJ02(MagicTouchJj02Coordinator.class),
     LEFUN(LefunDeviceCoordinator.class),
     VIVITAR_HR_BP_MONITOR_ACTIVITY_TRACKER(VivitarHrBpMonitorActivityTrackerCoordinator.class),
     BOHEMIC_SMART_BRACELET(BohemicSmartBraceletDeviceCoordinator.class),

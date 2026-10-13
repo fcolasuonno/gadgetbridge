@@ -2410,6 +2410,7 @@
     <string name="devicetype_mijia_lywsd03" translatable="false">Mijia Temperature and Humidity Sensor 2</string>
     <string name="devicetype_mijia_xmwsdj04" translatable="false">Mijia Temperature and Humidity Sensor 2 (E-ink)</string>
     <string name="devicetype_mijia_mho_c303" translatable="false">Mijia MHO-C303</string>
+    <string name="devicetype_magic_touch_jj02" translatable="false">Mijia Smart Neck and Shoulder Massager</string>
     <string name="devicetype_makibes_hr3" translatable="false">Makibes HR3</string>
     <string name="devicetype_ovtouch_26" translatable="false">Overmax Touch 2.6</string>
     <string name="devicetype_banglejs" translatable="false">Bangle.js</string>
