@@ -54,6 +54,13 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
     private var pendingLoginToken: ByteArray? = null
     private var session: XiaomiScooterCrypto.Session? = null
 
+    /**
+     * The characteristic the device chose for the key exchange. Normally AUTH_DATA,
+     * but this device emits the pre-key PDUs on 0x0019, so the whole AUTH_DATA-side
+     * flow (replay, SEND, pubkey, token) follows the device onto that channel.
+     */
+    private var authDataChannel: UUID = UUID_CHARACTERISTIC_AUTH_DATA
+
     // GATT table, captured for the exploration log and for subscribing extras
     private var extraNotifiables: List<BluetoothGattCharacteristic> = emptyList()
 
@@ -96,6 +103,7 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         ephemeralKeyPair = XiaomiScooterCrypto.generateEphemeralKeyPair()
         pendingLoginToken = null
         session = null
+        authDataChannel = UUID_CHARACTERISTIC_AUTH_DATA
 
         builder.setDeviceState(GBDevice.State.INITIALIZING)
         builder.requestMtu(247)
@@ -127,12 +135,20 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
             }
 
             UUID_CHARACTERISTIC_AUTH_DATA -> {
+                authDataChannel = UUID_CHARACTERISTIC_AUTH_DATA
                 handleAuthData(value)
                 return true
             }
 
             UUID_CHARACTERISTIC_COMMAND -> {
                 LOG.warn("CMD {}: {}", characteristic.uuid, GB.hexdump(value))
+                return true
+            }
+
+            UUID_CHARACTERISTIC_KEY_EXCHANGE -> {
+                LOG.debug("Key-exchange channel frame: {}", GB.hexdump(value))
+                authDataChannel = UUID_CHARACTERISTIC_KEY_EXCHANGE
+                handleAuthData(value)
                 return true
             }
 
@@ -169,11 +185,11 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
             is XiaomiScooterTransport.ParsedFrame.KeyExchange -> {
                 if (frame.fromDevice && authStep == AuthStep.EXPECT_PRE_KEY_HEADER) {
                     LOG.debug("Got pre-key header, replaying response")
-                    write(UUID_CHARACTERISTIC_AUTH_DATA, XiaomiScooterTransport.replayKeyExchangePdu(value))
+                    write(authDataChannel, XiaomiScooterTransport.replayKeyExchangePdu(value))
                     authStep = AuthStep.EXPECT_PRE_KEY_DATA
                 } else if (frame.fromDevice && authStep == AuthStep.EXPECT_PRE_KEY_DATA) {
                     LOG.debug("Got pre-key data, starting login")
-                    write(UUID_CHARACTERISTIC_AUTH_DATA, XiaomiScooterTransport.replayKeyExchangePdu(value))
+                    write(authDataChannel, XiaomiScooterTransport.replayKeyExchangePdu(value))
                     beginPublicKeyExchange()
                 } else {
                     LOG.warn("Unexpected key-exchange PDU in step {}", authStep)
@@ -184,7 +200,7 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
                 AuthStep.EXPECT_APP_PUBKEY_RDY -> {
                     LOG.debug("Got RCV_RDY, sending public key")
                     write(
-                        UUID_CHARACTERISTIC_AUTH_DATA, XiaomiScooterTransport.buildDataFrame(
+                        authDataChannel, XiaomiScooterTransport.buildDataFrame(
                             XiaomiScooterCrypto.publicKeyToRaw(ephemeralKeyPair.public)
                         )
                     )
@@ -198,7 +214,7 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
                         return
                     }
                     LOG.debug("Got RCV_RDY, sending login token")
-                    write(UUID_CHARACTERISTIC_AUTH_DATA, XiaomiScooterTransport.buildDataFrame(token))
+                    write(authDataChannel, XiaomiScooterTransport.buildDataFrame(token))
                     authStep = AuthStep.EXPECT_TOKEN_OK
                 }
 
@@ -238,14 +254,14 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
 
     private fun beginPublicKeyExchange() {
         write(UUID_CHARACTERISTIC_AUTH_CTRL, LOGIN_START)
-        write(UUID_CHARACTERISTIC_AUTH_DATA, XiaomiScooterTransport.buildSend(XiaomiScooterTransport.TYPE_DEV_PUBKEY))
+        write(authDataChannel, XiaomiScooterTransport.buildSend(XiaomiScooterTransport.TYPE_DEV_PUBKEY))
         authStep = AuthStep.EXPECT_APP_PUBKEY_RDY
     }
 
     private fun onDevicePublicKey(devicePubKey: ByteArray) {
         LOG.debug("Got device public key, preparing to send login token")
 
-        write(UUID_CHARACTERISTIC_AUTH_DATA, XiaomiScooterTransport.ACK)
+        write(authDataChannel, XiaomiScooterTransport.ACK)
 
         val bindKey = getBindKey()
         if (bindKey == null) {
@@ -268,7 +284,7 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         pendingLoginToken = XiaomiScooterCrypto.buildLoginConfirmationToken(sessionKeys.appKey, devicePubKey)
 
         write(
-            UUID_CHARACTERISTIC_AUTH_DATA,
+            authDataChannel,
             XiaomiScooterTransport.buildSend(XiaomiScooterTransport.TYPE_DEV_LOGIN_INFO)
         )
         authStep = AuthStep.EXPECT_TOKEN_RDY
@@ -360,6 +376,8 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         val UUID_SERVICE_XIAOMI: UUID = UUID.fromString("0000fe95-0000-1000-8000-00805f9b34fb")
         val UUID_CHARACTERISTIC_AUTH_CTRL: UUID = UUID.fromString("00000010-0000-1000-8000-00805f9b34fb")
         val UUID_CHARACTERISTIC_AUTH_DATA: UUID = UUID.fromString("00000016-0000-1000-8000-00805f9b34fb")
+        /** The device emits the key-exchange PDUs here instead of AUTH_DATA. */
+        val UUID_CHARACTERISTIC_KEY_EXCHANGE: UUID = UUID.fromString("00000019-0000-1000-8000-00805f9b34fb")
         val UUID_CHARACTERISTIC_COMMAND: UUID = UUID.fromString("0000001a-0000-1000-8000-00805f9b34fb")
         val UUID_CHARACTERISTIC_REPORT: UUID = UUID.fromString("0000001b-0000-1000-8000-00805f9b34fb")
         val UUID_CHARACTERISTIC_DEVICE_INFO: UUID = UUID.fromString("0000001c-0000-1000-8000-00805f9b34fb")
