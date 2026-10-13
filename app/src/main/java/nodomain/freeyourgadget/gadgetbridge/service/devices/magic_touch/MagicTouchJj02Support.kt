@@ -55,9 +55,10 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
     private var session: XiaomiScooterCrypto.Session? = null
 
     /**
-     * The characteristic the device chose for the key exchange. Normally AUTH_DATA,
-     * but this device emits the pre-key PDUs on 0x0019, so the whole AUTH_DATA-side
-     * flow (replay, SEND, pubkey, token) follows the device onto that channel.
+     * The characteristic the login replies go to: AUTH_DATA (0x0017). NOTE: this is NOT the
+     * scooter's 0x0016 and NOT the 0x0019 channel the pre-key pushes arrive on -- the snoop
+     * proves the 64-247 byte login frames go to value handle 0x0018, i.e. UUID 0x0017.
+     * Never derived from incoming traffic; the device only listens here.
      */
     private var authDataChannel: UUID = UUID_CHARACTERISTIC_AUTH_DATA
 
@@ -137,7 +138,6 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
             }
 
             UUID_CHARACTERISTIC_AUTH_DATA -> {
-                authDataChannel = UUID_CHARACTERISTIC_AUTH_DATA
                 handleAuthData(value)
                 return true
             }
@@ -149,7 +149,6 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
 
             UUID_CHARACTERISTIC_KEY_EXCHANGE -> {
                 LOG.debug("Key-exchange channel frame: {}", GB.hexdump(value))
-                authDataChannel = UUID_CHARACTERISTIC_KEY_EXCHANGE
                 handleAuthData(value)
                 return true
             }
