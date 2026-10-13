@@ -118,6 +118,8 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         }
 
         builder.write(UUID_CHARACTERISTIC_AUTH_CTRL, *AUTH_START)
+        // Version query, mirroring the vendor app (0x03 -> chip string like RTL8762C)
+        builder.write(UUID_CHARACTERISTIC_DEVICE_INFO, 0x03)
 
         // Initialization finishes asynchronously on LOGIN_OK -- see onLoginOk().
         return builder
@@ -253,7 +255,8 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
     }
 
     private fun beginPublicKeyExchange() {
-        write(UUID_CHARACTERISTIC_AUTH_CTRL, LOGIN_START)
+        // NOTE: the scooter writes LOGIN_START (20 00 00 00) to AUTH_CTRL here, but this
+        // device restarts the handshake when it sees it, so it is skipped: straight to SEND.
         write(authDataChannel, XiaomiScooterTransport.buildSend(XiaomiScooterTransport.TYPE_DEV_PUBKEY))
         authStep = AuthStep.EXPECT_APP_PUBKEY_RDY
     }
