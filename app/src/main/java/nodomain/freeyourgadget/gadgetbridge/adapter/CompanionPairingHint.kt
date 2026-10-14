@@ -33,6 +33,12 @@ object CompanionPairingHint {
         if (!BluetoothAdapter.checkBluetoothAddress(device.address)) {
             return false
         }
+        if (device.deviceCoordinator.getBondingStyle() == DeviceCoordinator.BONDING_STYLE_NONE) {
+            // Devices that never bond (e.g. Xiaomi BLE StandardAuth) must not
+            // prompt: the association scan disrupts their connection and can
+            // never succeed.
+            return false
+        }
         if (GBApplication.getDeviceSpecificSharedPrefs(device.address).getBoolean(PREF_DISMISSED, false)) {
             return false
         }

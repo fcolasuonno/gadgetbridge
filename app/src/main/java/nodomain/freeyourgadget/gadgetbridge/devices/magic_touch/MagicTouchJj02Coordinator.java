@@ -18,11 +18,14 @@ package nodomain.freeyourgadget.gadgetbridge.devices.magic_touch;
 
 import androidx.annotation.NonNull;
 
+import java.util.List;
 import java.util.regex.Pattern;
 
 import nodomain.freeyourgadget.gadgetbridge.R;
 import nodomain.freeyourgadget.gadgetbridge.devices.AbstractBLEDeviceCoordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.DeviceCoordinator;
+import nodomain.freeyourgadget.gadgetbridge.devices.cards.DeviceCardItem;
+import nodomain.freeyourgadget.gadgetbridge.widgets.DeviceWidgetsProvider;
 import nodomain.freeyourgadget.gadgetbridge.impl.GBDevice;
 import nodomain.freeyourgadget.gadgetbridge.service.DeviceSupport;
 import nodomain.freeyourgadget.gadgetbridge.service.devices.magic_touch.MagicTouchJj02Support;
@@ -30,11 +33,10 @@ import nodomain.freeyourgadget.gadgetbridge.service.devices.magic_touch.MagicTou
 /**
  * Mijia Smart Neck and Shoulder Massager (xiaomi.magic_touch.jj02).
  *
- * <p>Work in progress: discovery only. The device advertises as
- * {@code xiaomi.magic_touch.jj02} and speaks the Xiaomi miot BLE protocol
- * (see {@link MagicTouchMiotSpec}). The command channel is still being
- * reverse-engineered from HCI snoop captures; the support class currently
- * connects, dumps the GATT table and logs all notifications.
+ * <p>The device advertises as {@code xiaomi.magic_touch.jj02} and speaks
+ * Xiaomi BLE StandardAuth + encrypted miot (see {@link MagicTouchMiotSpec}).
+ * Login needs the 12-byte Mi Home cloud token (device settings); afterwards
+ * power, mode, heat, timer and battery all work over the encrypted channel.
  */
 public class MagicTouchJj02Coordinator extends AbstractBLEDeviceCoordinator {
     @Override
@@ -74,6 +76,35 @@ public class MagicTouchJj02Coordinator extends AbstractBLEDeviceCoordinator {
     @Override
     public Class<? extends DeviceSupport> getDeviceSupportClass(final GBDevice device) {
         return MagicTouchJj02Support.class;
+    }
+
+    @Override
+    public List<DeviceCardItem> getCardItems(@NonNull final GBDevice device) {
+        return MagicTouchDeviceCardItemsKt.magicTouchDeviceCardItems(device, this);
+    }
+
+    @Override
+    public boolean requiresAuthKey() {
+        // 12-byte Mi Home cloud token, entered at discovery or later in settings.
+        return true;
+    }
+
+    @Override
+    public boolean validateAuthKey(@NonNull final String authKey) {
+        String hex = authKey.trim();
+        if (hex.startsWith("0x") || hex.startsWith("0X")) {
+            hex = hex.substring(2);
+        }
+        if (hex.length() != 24) {
+            return false;
+        }
+        for (int i = 0; i < hex.length(); i++) {
+            char c = hex.charAt(i);
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
