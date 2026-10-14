@@ -274,9 +274,14 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         createTransactionBuilder("magic_touch_notify_auth_ctrl")
             .notify(UUID_CHARACTERISTIC_AUTH_CTRL, true)
             .queue()
-        write(UUID_CHARACTERISTIC_AUTH_CTRL, LOGIN_START)
+        // The vendor's LOGIN_START 4th byte was truncated in captures (24 00 00 ??):
+        // sweep candidates across reconnects, first response past SEND wins.
+        val variant = LOGIN_START_VARIANTS[loginVariant % LOGIN_START_VARIANTS.size]
+        LOG.warn("LOGIN_START candidate 0x{} (attempt {}/{})", Integer.toHexString(variant.toInt() and 0xff), loginVariant + 1, LOGIN_START_VARIANTS.size)
+        write(UUID_CHARACTERISTIC_AUTH_CTRL, byteArrayOf(0x24.toByte(), 0x00, 0x00, variant))
         write(authDataChannel, XiaomiScooterTransport.buildSend(XiaomiScooterTransport.TYPE_DEV_PUBKEY))
         authStep = AuthStep.EXPECT_APP_PUBKEY_RDY
+        loginVariant++
     }
 
     private fun onDevicePublicKey(devicePubKey: ByteArray) {
@@ -413,8 +418,9 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         const val PREF_MAGIC_TOUCH_BIND_KEY = "pref_magic_touch_jj02_bind_key"
 
         private val AUTH_START = byteArrayOf(0xa4.toByte())
-        /** Captured from the vendor app (scooter uses 0x20 here); 4th byte truncated, trying 0x00. */
-        private val LOGIN_START = byteArrayOf(0x24.toByte(), 0x00, 0x00, 0x00)
+        /** LOGIN_START variants: vendor uses 0x24, 4th byte unknown (capture truncated). */
+        private val LOGIN_START_VARIANTS = byteArrayOf(0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x20)
+        private var loginVariant = 0
         private val LOGIN_OK = byteArrayOf(0x21, 0x00, 0x00, 0x00)
         private val LOGIN_FAIL = byteArrayOf(0x22, 0x00, 0x00, 0x00)
     }
