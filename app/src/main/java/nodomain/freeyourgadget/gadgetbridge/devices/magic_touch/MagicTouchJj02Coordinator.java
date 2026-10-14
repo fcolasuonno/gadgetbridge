@@ -23,9 +23,9 @@ import java.util.regex.Pattern;
 
 import nodomain.freeyourgadget.gadgetbridge.R;
 import nodomain.freeyourgadget.gadgetbridge.devices.AbstractBLEDeviceCoordinator;
+import nodomain.freeyourgadget.gadgetbridge.devices.DeviceCardAction;
 import nodomain.freeyourgadget.gadgetbridge.devices.DeviceCoordinator;
-import nodomain.freeyourgadget.gadgetbridge.devices.cards.DeviceCardItem;
-import nodomain.freeyourgadget.gadgetbridge.widgets.DeviceWidgetsProvider;
+
 import nodomain.freeyourgadget.gadgetbridge.impl.GBDevice;
 import nodomain.freeyourgadget.gadgetbridge.service.DeviceSupport;
 import nodomain.freeyourgadget.gadgetbridge.service.devices.magic_touch.MagicTouchJj02Support;
@@ -79,8 +79,8 @@ public class MagicTouchJj02Coordinator extends AbstractBLEDeviceCoordinator {
     }
 
     @Override
-    public List<DeviceCardItem> getCardItems(@NonNull final GBDevice device) {
-        return MagicTouchDeviceCardItemsKt.magicTouchDeviceCardItems(device, this);
+    public List<DeviceCardAction> getCustomActions() {
+        return MagicTouchCardActionsKt.magicTouchCustomActions();
     }
 
     @Override

@@ -2424,6 +2424,7 @@
     <string name="magic_touch_jj02_battery_title">Battery</string>
     <string name="magic_touch_control_title">Massager control</string>
     <string name="magic_touch_unplug_charger">Unplug the charger to control the massager</string>
+    <string name="magic_touch_turn_on_first">Turn the massager on first</string>
     <string name="devicetype_makibes_hr3" translatable="false">Makibes HR3</string>
     <string name="devicetype_ovtouch_26" translatable="false">Overmax Touch 2.6</string>
     <string name="devicetype_banglejs" translatable="false">Bangle.js</string>

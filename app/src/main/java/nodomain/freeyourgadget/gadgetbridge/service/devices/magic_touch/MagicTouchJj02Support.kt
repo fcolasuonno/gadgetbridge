@@ -19,13 +19,8 @@ package nodomain.freeyourgadget.gadgetbridge.service.devices.magic_touch
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.widget.Toast
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import nodomain.freeyourgadget.gadgetbridge.GBApplication
 import nodomain.freeyourgadget.gadgetbridge.R
 import nodomain.freeyourgadget.gadgetbridge.activities.devicesettings.DeviceSettingsPreferenceConst
@@ -134,15 +129,6 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
             LOG.debug("Unregister prefs listener failed: {}", e.message)
         }
         devicePrefs().registerOnSharedPreferenceChangeListener(this)
-        val commandFilter = IntentFilter().apply {
-            addAction(ACTION_SET_POWER)
-            addAction(ACTION_SET_MODE)
-            addAction(ACTION_SET_HEATING)
-            addAction(ACTION_SET_HEAT_LEVEL)
-            addAction(ACTION_SET_TIMER)
-            addAction(ACTION_REFRESH)
-        }
-        LocalBroadcastManager.getInstance(context).registerReceiver(commandReceiver, commandFilter)
 
         builder.setDeviceState(GBDevice.State.INITIALIZING)
 
@@ -181,43 +167,56 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         } catch (e: Exception) {
             LOG.debug("Unregister prefs listener failed: {}", e.message)
         }
-        try {
-            LocalBroadcastManager.getInstance(context).unregisterReceiver(commandReceiver)
-        } catch (e: Exception) {
-            LOG.debug("Unregister command receiver failed: {}", e.message)
-        }
         if (activeInstance === this) {
             activeInstance = null
         }
         super.dispose()
     }
 
-    private val commandReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (activeInstance !== this@MagicTouchJj02Support) {
-                return
+    /**
+     * Single entry for UI commands (card icons via ConfigurationAction,
+     * dashboard widgets). Values encode in the key; toggles/cycles read
+     * last-known state. All sends go through the gated setX helpers.
+     */
+    override fun onSendConfiguration(config: String) {
+        LOG.warn("onSendConfiguration: {}", config)
+        if (activeInstance !== this) {
+            LOG.warn("Ignoring config from stale instance")
+            return
+        }
+        if (authStep != AuthStep.DONE && config != "refresh") {
+            notReady()
+            return
+        }
+        val prefs = devicePrefs()
+        when (config) {
+            "power_toggle" -> setPower(!prefs.getBoolean(PREF_POWER, false))
+            "mode_next" -> {
+                val cur = prefs.getString(PREF_MODE, "1")?.toIntOrNull() ?: 1
+                setMode(if (cur >= 4) 1 else cur + 1)
             }
-            if (authStep != AuthStep.DONE) {
-                notReady()
-                return
+            "mode_1", "mode_2", "mode_3", "mode_4" ->
+                setMode(config.substringAfter("mode_").toInt())
+            "heat_toggle" -> setHeating(!prefs.getBoolean(PREF_HEATING, false))
+            "heat_on" -> setHeating(true)
+            "heat_off" -> setHeating(false)
+            "level_next" -> {
+                val cur = prefs.getString(PREF_HEAT_LEVEL, "1")
+                setHeatLevel(if (cur == "1") 2 else 1)
             }
-            when (intent.action) {
-                ACTION_SET_POWER -> setPower(intent.getBooleanExtra(EXTRA_POWER, false))
-                ACTION_SET_MODE -> {
-                    val m = intent.getIntExtra(EXTRA_MODE, 0)
-                    if (m in 1..4) setMode(m)
-                }
-                ACTION_SET_HEATING -> setHeating(intent.getBooleanExtra(EXTRA_HEATING, false))
-                ACTION_SET_HEAT_LEVEL -> {
-                    val l = intent.getIntExtra(EXTRA_HEAT_LEVEL, 0)
-                    if (l in 1..2) setHeatLevel(l)
-                }
-                ACTION_SET_TIMER -> {
-                    val t = intent.getIntExtra(EXTRA_TIMER, 0)
-                    if (t in 2..20) setTimerMinutes(t)
-                }
-                ACTION_REFRESH -> refreshAll()
+            "level_1" -> setHeatLevel(1)
+            "level_2" -> setHeatLevel(2)
+            "timer_next" -> {
+                val presets = listOf(5, 10, 15, 20)
+                val cur = prefs.getString(PREF_TIMER, "15")?.toIntOrNull() ?: 15
+                setTimerMinutes(presets.firstOrNull { it > cur } ?: presets.first())
             }
+            "timer_5" -> setTimerMinutes(5)
+            "timer_10" -> setTimerMinutes(10)
+            "timer_15" -> setTimerMinutes(15)
+            "timer_20" -> setTimerMinutes(20)
+            "refresh" -> refreshAll()
+            else -> LOG.warn("Unknown configuration key: {}", config)
         }
     }
 
@@ -439,6 +438,11 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
             if (pct != null && pct in 0..100) {
                 lastBatteryPct = pct
                 updateBatteryDisplay()
+                try {
+                    gbDevice.sendDeviceUpdateIntent(context)
+                } catch (e: Exception) {
+                    LOG.debug("sendDeviceUpdateIntent failed: {}", e.message)
+                }
             }
         } catch (e: Exception) {
             LOG.debug("Restore battery failed: {}", e.message)
@@ -478,6 +482,22 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
      * all control writes. Refreshed on every bulk read via power. */
     private fun isCharging(): Boolean = lastBatteryStatus == 2 || lastPower == 2
 
+    private fun isPoweredOn(): Boolean {
+        return try {
+            devicePrefs().getBoolean(PREF_POWER, false)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun requirePoweredOn(): Boolean {
+        if (!isPoweredOn()) {
+            GB.toast(context, R.string.magic_touch_turn_on_first, Toast.LENGTH_LONG, GB.WARN)
+            return false
+        }
+        return true
+    }
+
     private fun requireNotCharging(): Boolean {
         if (isCharging()) {
             GB.toast(context, R.string.magic_touch_unplug_charger, Toast.LENGTH_LONG, GB.WARN)
@@ -493,25 +513,25 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
 
     fun setMode(mode: Int) {
         require(mode in 1..4) { "mode must be 1..4" }
-        if (!requireNotCharging()) return
+        if (!requireNotCharging() || !requirePoweredOn()) return
         sendMiotCommand(buildSet(MagicTouchMiotSpec.PID_MODE, TYPE_UINT8, mode))
     }
 
     fun setHeating(on: Boolean) {
         // Heating uses type byte 0x00 (verified captures), unlike the 0x10 elsewhere.
-        if (!requireNotCharging()) return
+        if (!requireNotCharging() || !requirePoweredOn()) return
         sendMiotCommand(buildSet(MagicTouchMiotSpec.PID_HEATING, 0x00, if (on) 1 else 0))
     }
 
     fun setHeatLevel(level: Int) {
         require(level in 1..2) { "heat level must be 1 (40C) or 2 (45C)" }
-        if (!requireNotCharging()) return
+        if (!requireNotCharging() || !requirePoweredOn()) return
         sendMiotCommand(buildSet(MagicTouchMiotSpec.PID_HEAT_LEVEL, TYPE_UINT8, level))
     }
 
     fun setTimerMinutes(minutes: Int) {
         require(minutes in 2..20) { "timer must be 2..20 minutes" }
-        if (!requireNotCharging()) return
+        if (!requireNotCharging() || !requirePoweredOn()) return
         sendMiotCommand(buildSet(MagicTouchMiotSpec.PID_TARGET_TIME, TYPE_UINT8, minutes))
     }
 
@@ -582,6 +602,11 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
             )
             LOG.warn("REPORT ctr={} {}", counter, decodeMiotReport(pt))
             syncPrefsFromTelemetry(pt)
+            try {
+                gbDevice.sendDeviceUpdateIntent(context)
+            } catch (e: Exception) {
+                LOG.debug("sendDeviceUpdateIntent failed: {}", e.message)
+            }
         } catch (e: Exception) {
             LOG.warn("Failed to decrypt report ctr={}: {}", counter, e.message)
         }
@@ -823,12 +848,8 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         } catch (e: Exception) {
             LOG.debug("setBatteryState failed: {}", e.message)
         }
-        // Setters above don't notify; without this the dashboard/widgets keep stale values.
-        try {
-            gbDevice.sendDeviceUpdateIntent(context)
-        } catch (e: Exception) {
-            LOG.debug("sendDeviceUpdateIntent failed: {}", e.message)
-        }
+        // Dashboard/widgets refresh via handleReport's update intent (or the
+        // login restore below), not here, to avoid double refreshes.
     }
 
     private fun savedBatteryPct(): Int? {
@@ -1012,18 +1033,7 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         const val PREF_BATTERY = "pref_magic_touch_jj02_battery"
         const val PREF_BATTERY_LEVEL = "pref_magic_touch_jj02_battery_level"
 
-        // Control-card commands (sent by MagicTouchControlActivity as local broadcasts).
-        const val ACTION_SET_POWER = "nodomain.freeyourgadget.gadgetbridge.magic_touch.ACTION_SET_POWER"
-        const val EXTRA_POWER = "power"
-        const val ACTION_SET_MODE = "nodomain.freeyourgadget.gadgetbridge.magic_touch.ACTION_SET_MODE"
-        const val EXTRA_MODE = "mode"
-        const val ACTION_SET_HEATING = "nodomain.freeyourgadget.gadgetbridge.magic_touch.ACTION_SET_HEATING"
-        const val EXTRA_HEATING = "heating"
-        const val ACTION_SET_HEAT_LEVEL = "nodomain.freeyourgadget.gadgetbridge.magic_touch.ACTION_SET_HEAT_LEVEL"
-        const val EXTRA_HEAT_LEVEL = "heat_level"
-        const val ACTION_SET_TIMER = "nodomain.freeyourgadget.gadgetbridge.magic_touch.ACTION_SET_TIMER"
-        const val EXTRA_TIMER = "timer_minutes"
-        const val ACTION_REFRESH = "nodomain.freeyourgadget.gadgetbridge.magic_touch.ACTION_REFRESH"
+
 
         private val AUTH_START = byteArrayOf(0xa4.toByte())
 
