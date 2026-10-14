@@ -119,6 +119,7 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         cmdQueue.clear()
         cmdBusy = false
         pendingCmd = null
+        heatingActive = false
 
         // Defensive: never stack listeners across reconnects/leaked supports.
         // The guard itself is static so even two live instances cannot ping-pong.
@@ -178,6 +179,10 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
      * dashboard widgets). Values encode in the key; toggles/cycles read
      * last-known state. All sends go through the gated setX helpers.
      */
+    /** Tracks whether heat is currently on (from sends + telemetry) so the
+     * level set is only paired with heat_on when starting from off. */
+    private var heatingActive = false
+
     override fun onSendConfiguration(config: String) {
         LOG.warn("onSendConfiguration: {}", config)
         if (activeInstance !== this) {
@@ -190,31 +195,33 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         }
         val prefs = devicePrefs()
         when (config) {
-            "power_toggle" -> setPower(!prefs.getBoolean(PREF_POWER, false))
-            "mode_next" -> {
-                val cur = prefs.getString(PREF_MODE, "1")?.toIntOrNull() ?: 1
-                setMode(if (cur >= 4) 1 else cur + 1)
+            "power" -> setPower(prefs.getBoolean(PREF_POWER, false))
+            "mode" -> {
+                val m = prefs.getString(PREF_MODE, "1")?.toIntOrNull() ?: 1
+                if (m in 1..4) setMode(m)
             }
-            "mode_1", "mode_2", "mode_3", "mode_4" ->
-                setMode(config.substringAfter("mode_").toInt())
-            "heat_toggle" -> setHeating(!prefs.getBoolean(PREF_HEATING, false))
-            "heat_on" -> setHeating(true)
-            "heat_off" -> setHeating(false)
-            "level_next" -> {
-                val cur = prefs.getString(PREF_HEAT_LEVEL, "1")
-                setHeatLevel(if (cur == "1") 2 else 1)
+            "heat" -> {
+                val on = prefs.getBoolean(PREF_HEATING, false)
+                val level = prefs.getString(PREF_HEAT_LEVEL, "1")?.toIntOrNull() ?: 1
+                if (!on) {
+                    setHeating(false)
+                    heatingActive = false
+                } else if (!heatingActive) {
+                    setHeating(true)
+                    if (level in 1..2) setHeatLevel(level)
+                    heatingActive = true
+                } else {
+                    if (level in 1..2) setHeatLevel(level)
+                }
             }
-            "level_1" -> setHeatLevel(1)
-            "level_2" -> setHeatLevel(2)
-            "timer_next" -> {
-                val presets = listOf(5, 10, 15, 20)
-                val cur = prefs.getString(PREF_TIMER, "15")?.toIntOrNull() ?: 15
-                setTimerMinutes(presets.firstOrNull { it > cur } ?: presets.first())
+            "level" -> {
+                val l = prefs.getString(PREF_HEAT_LEVEL, "1")?.toIntOrNull() ?: 1
+                if (l in 1..2) setHeatLevel(l)
             }
-            "timer_5" -> setTimerMinutes(5)
-            "timer_10" -> setTimerMinutes(10)
-            "timer_15" -> setTimerMinutes(15)
-            "timer_20" -> setTimerMinutes(20)
+            "timer" -> {
+                val t = prefs.getString(PREF_TIMER, "15")?.toIntOrNull() ?: 15
+                if (t in 2..20) setTimerMinutes(t)
+            }
             "refresh" -> refreshAll()
             else -> LOG.warn("Unknown configuration key: {}", config)
         }
@@ -918,7 +925,10 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         when (piid) {
             MagicTouchMiotSpec.PID_ON -> setPrefBoolean(PREF_POWER, v == 1)
             MagicTouchMiotSpec.PID_MODE -> setPrefString(PREF_MODE, v.toString())
-            MagicTouchMiotSpec.PID_HEATING -> setPrefBoolean(PREF_HEATING, v == 1)
+            MagicTouchMiotSpec.PID_HEATING -> {
+                setPrefBoolean(PREF_HEATING, v == 1)
+                heatingActive = v == 1
+            }
             MagicTouchMiotSpec.PID_HEAT_LEVEL -> setPrefString(PREF_HEAT_LEVEL, v.toString())
             MagicTouchMiotSpec.PID_TARGET_TIME -> setPrefString(PREF_TIMER, v.toString())
             // Countdown, defaults, head-init are display-only/logged.
