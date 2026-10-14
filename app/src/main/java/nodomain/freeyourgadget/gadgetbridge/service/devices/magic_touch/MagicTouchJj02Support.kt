@@ -120,6 +120,9 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG) {
         builder.notify(UUID_CHARACTERISTIC_REPORT, true)
         builder.notify(UUID_CHARACTERISTIC_COMMAND, true)
         builder.notify(UUID_CHARACTERISTIC_DEVICE_INFO, true)
+        // Vendor order: 0x00 first (device answers 00 01 03, arming the channel),
+        // then 0x03 (version string). Skipping 0x00 leaves the device mute.
+        builder.write(UUID_CHARACTERISTIC_DEVICE_INFO, 0x00)
         builder.write(UUID_CHARACTERISTIC_DEVICE_INFO, 0x03)
         builder.notify(authDataChannel, true)
         builder.read(UUID_CHARACTERISTIC_FIRMWARE_VERSION)
