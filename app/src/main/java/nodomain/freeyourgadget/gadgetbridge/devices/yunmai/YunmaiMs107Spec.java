@@ -95,6 +95,42 @@ public final class YunmaiMs107Spec {
     /** siid 8 online-data: piid 1 weight-data, piid 2 body-composition. */
     public static final int SIID_ONLINE_DATA = 8;
 
+    // ---- Full endpoint map (plugin-verified shapes; send paths exist only
+    // ---- where the wire framing is verified: no-arg actions, cap, gets).
+    // siid 1 device-info: piid 1 manufacturer, 2 model, 3 device ID,
+    // 4 firmware (readDeviceInfo reads 4+5), 5 serial.
+    public static final int SIID_DEVICE_INFO = 1;
+    // siid 2 scale: piid 1 unit, 2 heart-rate switch, 3 time,
+    // 1042 fault (0 none, 1 ble, 2 weight, 3 fat, 4 heart-rate).
+    public static final int PIID_HEART_RATE_SW = 2;
+    public static final int PIID_TIME = 3;
+    public static final int PIID_FAULT = 1042;
+    // siid 6 user-mgmt actions: 1 update-user, 2 query-update-user,
+    // 3 del-user, 4 request-user-list, 5 update-base-weight, 6 switch-user.
+    // Props: 1 miid, 2 age, 3 sex, 4 type, 5 height, 6 weight (0.1 kg),
+    // 7 time, 8 duid, 9 bfp, 10 app version, 11 idx, 12 hash, 13 owner,
+    // 14 user-status, 15 user-count.
+    public static final int SIID_USER_MGMT = 6;
+    public static final int AIID_UPDATE_USER = 1;
+    public static final int AIID_DELETE_USER = 3;
+    public static final int AIID_UPDATE_BASE_WEIGHT = 5;
+    public static final int AIID_SWITCH_USER = 6;
+    // siid 9 offline-data actions: 1 request (piid 4 count), 2 end (piid 2 idx
+    // string). Props: 1 report, 2 idx-string, 3 count, 4 only-upload-count.
+    public static final int AIID_REQUEST_OFFLINE = 1;
+    public static final int AIID_END_RECEPTION = 2;
+    // siid 10 work-mode props: 2 status, 3 balance-time (s), 4 real-weight.
+    public static final int PIID_WORK_STATUS = 2;
+    public static final int PIID_BALANCE_TIME = 3;
+    public static final int PIID_REAL_WEIGHT = 4;
+    // siid 11 custom BLE: piid 1 duid, 2 impedance/HR/weight u32, 3 time u32;
+    // event 1022 (9 B max). siid 13 syncinfo props: 1 pkg version, 2 unit,
+    // 3 HR switch, 4 time, 5 user-list JSON; results 6 offline-count, 7 SN,
+    // 8 MAC, 9 FW, 10 battery. siid 14 share-cancel (aiid 1).
+    // siid 15 self-check: piid 2 results string.
+    public static final int SIID_CUSTOM_BLE = 11;
+    public static final int PIID_OFFLINE_COUNT = 6;
+
     /** Complete-record field indexes (plugin MeasureComplete order). */
     public static final int COMPLETE_WEIGHT_TENTH_KG = 3;
     public static final int COMPLETE_TIME_SEC = 6;
