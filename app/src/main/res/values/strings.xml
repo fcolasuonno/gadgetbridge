@@ -2425,6 +2425,12 @@
     <string name="magic_touch_control_title">Massager control</string>
     <string name="magic_touch_heat_low">Low (40°C)</string>
     <string name="magic_touch_heat_high">High (45°C)</string>
+    <string name="magic_touch_custom_name_title">MiOT label</string>
+    <string name="magic_touch_custom_name_summary">Internal on-device label (not the Mi Home title, which is cloud-side)</string>
+    <string name="magic_touch_default_mode_title">Default mode</string>
+    <string name="magic_touch_beep_title">Beep</string>
+    <string name="magic_touch_beep_summary">Beep on button press</string>
+    <string name="magic_touch_head_init_title">Massage head init</string>
     <string name="magic_touch_unplug_charger">Unplug the charger to control the massager</string>
     <string name="magic_touch_turn_on_first">Turn the massager on first</string>
     <string name="devicetype_makibes_hr3" translatable="false">Makibes HR3</string>

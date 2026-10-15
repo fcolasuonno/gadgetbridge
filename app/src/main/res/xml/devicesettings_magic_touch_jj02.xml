@@ -8,4 +8,31 @@
         android:dialogTitle="@string/magic_touch_jj02_bind_key_title"
         android:singleLine="true"
         android:persistent="true" />
+    <EditTextPreference
+        android:key="pref_magic_touch_jj02_custom_name"
+        android:title="@string/magic_touch_custom_name_title"
+        android:summary="@string/magic_touch_custom_name_summary"
+        android:dialogTitle="@string/magic_touch_custom_name_title"
+        android:singleLine="true"
+        android:persistent="true" />
+    <ListPreference
+        android:key="pref_magic_touch_jj02_default_mode"
+        android:title="@string/magic_touch_default_mode_title"
+        android:entries="@array/magic_touch_jj02_mode_entries"
+        android:entryValues="@array/magic_touch_jj02_mode_values"
+        android:defaultValue="1"
+        android:persistent="true" />
+    <SwitchPreferenceCompat
+        android:key="pref_magic_touch_jj02_beep"
+        android:title="@string/magic_touch_beep_title"
+        android:summary="@string/magic_touch_beep_summary"
+        android:defaultValue="true"
+        android:persistent="true" />
+    <ListPreference
+        android:key="pref_magic_touch_jj02_head_init"
+        android:title="@string/magic_touch_head_init_title"
+        android:entries="@array/magic_touch_jj02_head_init_entries"
+        android:entryValues="@array/magic_touch_jj02_head_init_values"
+        android:defaultValue="1"
+        android:persistent="true" />
 </androidx.preference.PreferenceScreen>

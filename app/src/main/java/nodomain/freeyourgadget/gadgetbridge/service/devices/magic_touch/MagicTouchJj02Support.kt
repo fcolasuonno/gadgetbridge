@@ -222,6 +222,25 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
                 val t = prefs.getString(PREF_TIMER, "15")?.toIntOrNull() ?: 15
                 if (t in 2..20) setTimerMinutes(t)
             }
+            "rename" -> {
+                val name = prefs.getString(PREF_CUSTOM_NAME, "")?.trim() ?: ""
+                if (name.isNotEmpty()) {
+                    try {
+                        setCustomName(name)
+                    } catch (e: IllegalArgumentException) {
+                        LOG.warn("Invalid custom name: {}", e.message)
+                    }
+                }
+            }
+            "default_mode" -> {
+                val m = prefs.getString(PREF_DEFAULT_MODE, "1")?.toIntOrNull() ?: 1
+                if (m in 1..4) setDefaultMode(m)
+            }
+            "beep" -> setDefaultBeep(prefs.getBoolean(PREF_BEEP, true))
+            "head_init" -> {
+                val h = prefs.getString(PREF_HEAD_INIT, "1")?.toIntOrNull() ?: 1
+                if (h in 0..2) setHeadInit(h)
+            }
             "refresh" -> refreshAll()
             else -> LOG.warn("Unknown configuration key: {}", config)
         }
@@ -454,10 +473,10 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         } catch (e: Exception) {
             LOG.debug("Restore battery failed: {}", e.message)
         }
-        // Read-only refresh so live state shows up immediately (battery, then
-        // full property set -- the vendor app does the same on every connect).
-        sendMiotCommand(BATTERY_CAP)
-        sendMiotCommand(buildBulkGet())
+        // Read-only refresh so live state shows up immediately (capability,
+        // full property set, then standalone battery level -- the vendor app
+        // does the same on every connect).
+        refreshAll()
     }
 
     private fun authFailed(reason: String) {
@@ -542,9 +561,66 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         sendMiotCommand(buildSet(MagicTouchMiotSpec.PID_TARGET_TIME, TYPE_UINT8, minutes))
     }
 
+    /** Default mode used at power-on (1–4, same values as mode). */
+    fun setDefaultMode(mode: Int) {
+        require(mode in 1..4) { "default mode must be 1..4" }
+        if (!requireNotCharging() || !requirePoweredOn()) return
+        sendMiotCommand(buildSet(MagicTouchMiotSpec.PID_DEFAULT_MODE, TYPE_UINT8, mode))
+    }
+
+    /** Default beep on/off (bool wire type, like heating). */
+    fun setDefaultBeep(on: Boolean) {
+        if (!requireNotCharging() || !requirePoweredOn()) return
+        sendMiotCommand(buildSet(MagicTouchMiotSpec.PID_DEFAULT_BEEP_MODE, 0x00, if (on) 1 else 0))
+    }
+
+    /** Massage head init (0 reserve, 1 normal, 2 more-better). */
+    fun setHeadInit(mode: Int) {
+        require(mode in 0..2) { "head init must be 0..2" }
+        if (!requireNotCharging() || !requirePoweredOn()) return
+        sendMiotCommand(buildSet(MagicTouchMiotSpec.PID_MASSAGE_HEAD_INIT, TYPE_UINT8, mode))
+    }
+
+    /**
+     * Rename the device (customName 4/11, string). Verified live framing:
+     * `LL 20 MM MM 00 01 04 0b 00 01 <len> a0 <utf8>` (length before marker;
+     * `01 a0 <len>` and `01 0a <len>` forms are ignored/corrupt — do not use).
+     */
+    fun setCustomName(name: String) {
+        val bytes = name.toByteArray(Charsets.UTF_8)
+        require(bytes.isNotEmpty() && bytes.size <= 32) { "name must be 1..32 UTF-8 bytes" }
+        if (!requireNotCharging() || !requirePoweredOn()) return
+        val msgId = miotMsgId++ and 0xffff
+        val frame = byteArrayOf(
+            0x00.toByte(), 0x20.toByte(),
+            (msgId and 0xff).toByte(), ((msgId shr 8) and 0xff).toByte(),
+            0x00.toByte(), 0x01.toByte(), 0x04.toByte(),
+            MagicTouchMiotSpec.PID_CUSTOM_NAME.toByte(), 0x00.toByte(), 0x01.toByte(),
+            bytes.size.toByte(), 0xa0.toByte(),
+        ) + bytes
+        frame[0] = frame.size.toByte()
+        sendMiotCommand(frame)
+    }
+
     fun refreshAll() {
         sendMiotCommand(BATTERY_CAP)
         sendMiotCommand(buildBulkGet())
+        sendMiotCommand(buildBatteryLevelGet())
+    }
+
+    /**
+     * Standalone battery-level get (siid 5/piid 1003, count 1). Unlike the
+     * `05 EB 03` item embedded in the bulk get (which the device ignores),
+     * this is answered immediately with a 14 B `…05 eb 03…<raw>` report.
+     */
+    private fun buildBatteryLevelGet(): ByteArray {
+        val msgId = miotMsgId++ and 0xffff
+        return byteArrayOf(
+            0x09.toByte(), 0x20.toByte(),
+            (msgId and 0xff).toByte(), ((msgId shr 8) and 0xff).toByte(),
+            0x02.toByte(), 0x01.toByte(),
+            0x05.toByte(), 0xeb.toByte(), 0x03.toByte(),
+        )
     }
 
     private fun pumpCommandQueue() {
@@ -669,6 +745,11 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         ) {
             return Triple(5, 1003, pt[11].toInt() and 0xff)
         }
+        if (pt.size == 14 && (pt[6].toInt() and 0xff) == 5
+            && (pt[7].toInt() and 0xff) == 0xeb && (pt[8].toInt() and 0xff) == 0x03
+        ) {
+            return Triple(5, 1003, pt[13].toInt() and 0xff)
+        }
         return when (pt.size) {
             12 -> Triple(pt[6].toInt() and 0xff, pt[7].toInt() and 0xff, pt[11].toInt() and 0xff)
             11 -> Triple(pt[6].toInt() and 0xff, pt[7].toInt() and 0xff, pt[10].toInt() and 0xff)
@@ -735,14 +816,21 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
             // Stale support (leaked across reconnect/update): never send.
             return
         }
-        // Commands come from the control card via broadcasts, never from prefs.
-        // The command/battery prefs below are a state store written from
-        // telemetry for the card to display; user edits must not send.
+        // Settings-screen prefs send via categories below; card/widget prefs
+        // are written first by their own UI then call categories directly.
+        // Telemetry syncs (guarded above) never reach here.
         if (key == DeviceSettingsPreferenceConst.PREF_AUTH_KEY || key == PREF_MAGIC_TOUCH_BIND_KEY) {
             if (isConnected() && authStep == AuthStep.IDLE) {
                 LOG.warn("Token saved, starting login")
                 startLogin()
             }
+            return
+        }
+        when (key) {
+            PREF_CUSTOM_NAME -> onSendConfiguration("rename")
+            PREF_DEFAULT_MODE -> onSendConfiguration("default_mode")
+            PREF_BEEP -> onSendConfiguration("beep")
+            PREF_HEAD_INIT -> onSendConfiguration("head_init")
         }
     }
 
@@ -808,10 +896,13 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
     private fun isValidValue(piid: Int, v: Int): Boolean = when (piid) {
         MagicTouchMiotSpec.PID_ON -> v in 0..3
         MagicTouchMiotSpec.PID_MODE -> v in 1..4
+        MagicTouchMiotSpec.PID_DEFAULT_MODE -> v in 1..4
         MagicTouchMiotSpec.PID_HEATING -> v in 0..1
         MagicTouchMiotSpec.PID_HEAT_LEVEL -> v in 1..2
         MagicTouchMiotSpec.PID_TARGET_TIME -> v in 2..20
         MagicTouchMiotSpec.PID_COUNTDOWN -> v in 2..20
+        MagicTouchMiotSpec.PID_DEFAULT_BEEP_MODE -> v in 0..1
+        MagicTouchMiotSpec.PID_MASSAGE_HEAD_INIT -> v in 0..2
         else -> false
     }
 
@@ -885,7 +976,7 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
             if (pt[i] == 0x04.toByte() && pt[i + 2] == 0x00.toByte()) {
                 val piid = pt[i + 1].toInt() and 0xff
                 if (piid == MagicTouchMiotSpec.PID_CUSTOM_NAME) {
-                    // `04 0b 00 00 00 <len> a0 <str>`: just log the name.
+                    // `04 0b 00 00 00 <len> a0 <str>`: mirror into settings.
                     if (i + 6 < pt.size && pt[i + 6] == 0xa0.toByte()) {
                         val len = pt[i + 5].toInt() and 0xff
                         val end = (i + 7 + len).coerceAtMost(pt.size)
@@ -895,6 +986,9 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
                             "?"
                         }
                         LOG.warn("Device name: {}", name)
+                        if (name.isNotEmpty() && name != "?") {
+                            setPrefString(PREF_CUSTOM_NAME, name)
+                        }
                     }
                 } else if (piid in 1..12 && i + 7 < pt.size) {
                     syncProperty(piid, pt[i + 7].toInt() and 0xff)
@@ -931,7 +1025,10 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
             }
             MagicTouchMiotSpec.PID_HEAT_LEVEL -> setPrefString(PREF_HEAT_LEVEL, v.toString())
             MagicTouchMiotSpec.PID_TARGET_TIME -> setPrefString(PREF_TIMER, v.toString())
-            // Countdown, defaults, head-init are display-only/logged.
+            MagicTouchMiotSpec.PID_DEFAULT_MODE -> setPrefString(PREF_DEFAULT_MODE, v.toString())
+            MagicTouchMiotSpec.PID_DEFAULT_BEEP_MODE -> setPrefBoolean(PREF_BEEP, v == 1)
+            MagicTouchMiotSpec.PID_MASSAGE_HEAD_INIT -> setPrefString(PREF_HEAD_INIT, v.toString())
+            // Countdown, manipulation strings: decoded + logged, no UI target.
         }
     }
 
@@ -1042,6 +1139,10 @@ class MagicTouchJj02Support : AbstractBTLESingleDeviceSupport(LOG), SharedPrefer
         const val PREF_TIMER = "pref_magic_touch_jj02_timer"
         const val PREF_BATTERY = "pref_magic_touch_jj02_battery"
         const val PREF_BATTERY_LEVEL = "pref_magic_touch_jj02_battery_level"
+        const val PREF_CUSTOM_NAME = "pref_magic_touch_jj02_custom_name"
+        const val PREF_DEFAULT_MODE = "pref_magic_touch_jj02_default_mode"
+        const val PREF_BEEP = "pref_magic_touch_jj02_beep"
+        const val PREF_HEAD_INIT = "pref_magic_touch_jj02_head_init"
 
 
 
