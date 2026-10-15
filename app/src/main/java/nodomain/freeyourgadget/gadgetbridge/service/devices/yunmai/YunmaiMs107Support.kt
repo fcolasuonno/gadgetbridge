@@ -458,6 +458,7 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
             // op 0x06 action results may carry offline history (PII): length only.
             0x06 -> LOG.warn("REPORT ctr={} action-result len={}", counter, pt.size)
             0x07 -> handleOnlineData(counter, pt)
+            0xF0 -> LOG.debug("REPORT ctr={} capability echo", counter)
             else -> LOG.warn("REPORT ctr={} unknown op: {}", counter, GB.hexdump(pt))
         }
     }
