@@ -19,6 +19,7 @@ package nodomain.freeyourgadget.gadgetbridge.devices.yunmai;
 import androidx.annotation.NonNull;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -26,6 +27,7 @@ import de.greenrobot.dao.AbstractDao;
 import de.greenrobot.dao.Property;
 import nodomain.freeyourgadget.gadgetbridge.R;
 import nodomain.freeyourgadget.gadgetbridge.devices.AbstractBLEDeviceCoordinator;
+import nodomain.freeyourgadget.gadgetbridge.devices.DeviceCardAction;
 import nodomain.freeyourgadget.gadgetbridge.devices.DeviceCoordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.MiScaleWeightSampleProvider;
 import nodomain.freeyourgadget.gadgetbridge.devices.TimeSampleProvider;
@@ -61,6 +63,11 @@ public class YunmaiMs107Coordinator extends AbstractBLEDeviceCoordinator {
     @Override
     public Class<? extends DeviceSupport> getDeviceSupportClass(final GBDevice device) {
         return YunmaiMs107Support.class;
+    }
+
+    @Override
+    public List<DeviceCardAction> getCustomActions() {
+        return YunmaiMs107CardActionsKt.yunmaiMs107CustomActions();
     }
 
     @Override

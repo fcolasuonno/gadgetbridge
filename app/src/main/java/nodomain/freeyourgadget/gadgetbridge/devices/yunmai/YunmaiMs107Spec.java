@@ -138,6 +138,12 @@ public final class YunmaiMs107Spec {
     public static final int COMPLETE_IMPEDANCE_TENTH_OHM = 30;
     public static final int COMPLETE_FIELD_COUNT = 32;
 
+    /** siid 1 piids for the version readout (model + firmware strings). */
+    public static final int PIID_MODEL = 2;
+    public static final int PIID_FIRMWARE = 4;
+    /** siid 9 piid 3 offline-data-count (op07 count push value). */
+    public static final int PIID_OFFLINE_DATA_COUNT = 3;
+
     /** Build the 8-byte wakeup action (op 0x05, siid 10 aiid 1, no args). msgId is patched by the caller. */
     public static byte[] buildWakeup(final int msgId) {
         return new byte[]{
@@ -166,8 +172,15 @@ public final class YunmaiMs107Spec {
         };
     }
 
-    // Note: no offline-request builder. The stock app was never observed
-    // requesting siid-9 offline data in 5 captured sessions (offline records
-    // arrive unprompted after user sync); hand-built siid-9 framings are
-    // rejected by the device. Offline-record parsing is future work.
+    // Note: no end-of-reception builder. It acknowledges uploaded idxs
+    // (device may free slots on it), so Gadgetbridge never sends it
+    // unprompted; record-data payloads with unknown idxs stay unobserved.
+    /** Build the vendor-exact offline-data request (op 0x05, siid 9 aiid 1). */
+    public static byte[] buildOfflineRequest(final int msgId) {
+        return new byte[]{
+                0x0d, 0x20,
+                (byte) (msgId & 0xff), (byte) ((msgId >> 8) & 0xff),
+                0x05, 0x09, 0x01, 0x01, 0x04, 0x00, 0x01, 0x10, (byte) 0xa0,
+        };
+    }
 }

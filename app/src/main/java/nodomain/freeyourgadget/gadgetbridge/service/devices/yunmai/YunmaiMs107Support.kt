@@ -24,6 +24,7 @@ import android.widget.Toast
 import nodomain.freeyourgadget.gadgetbridge.GBApplication
 import nodomain.freeyourgadget.gadgetbridge.R
 import nodomain.freeyourgadget.gadgetbridge.activities.devicesettings.DeviceSettingsPreferenceConst
+import nodomain.freeyourgadget.gadgetbridge.deviceevents.GBDeviceEventVersionInfo
 import nodomain.freeyourgadget.gadgetbridge.devices.MiScaleWeightSampleProvider
 import nodomain.freeyourgadget.gadgetbridge.devices.yunmai.YunmaiMs107Spec
 import nodomain.freeyourgadget.gadgetbridge.entities.MiScaleWeightSample
@@ -156,6 +157,7 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
         when (config) {
             "wakeup" -> sendMiotCommand(YunmaiMs107Spec.buildWakeup(nextMsgId()))
             "refresh" -> refreshBasic()
+            "offline_check" -> sendMiotCommand(YunmaiMs107Spec.buildOfflineRequest(nextMsgId()))
             else -> LOG.warn("Unknown configuration key: {}", config)
         }
     }
@@ -168,12 +170,15 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
 
     private fun refreshBasic() {
         // Stock-observed bytes only: capability, wakeup, unit + work-mode
-        // gets. (siid-13 syncinfo and siid-9 offline props are verified
+        // gets, model + firmware string gets (version readout).
+        // (siid-13 syncinfo and siid-9 offline props are verified
         // silent to gets; siid-6 user props are readable but unused.)
         sendMiotCommand(YunmaiMs107Spec.buildCapability(nextMsgId()))
         sendMiotCommand(YunmaiMs107Spec.buildWakeup(nextMsgId()))
         sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_SCALE, YunmaiMs107Spec.PIID_UNIT))
         sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_WORK_MODE, YunmaiMs107Spec.PIID_WORK_MODE))
+        sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_DEVICE_INFO, YunmaiMs107Spec.PIID_MODEL))
+        sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_DEVICE_INFO, YunmaiMs107Spec.PIID_FIRMWARE))
     }
 
     private fun startLogin() {
@@ -467,17 +472,69 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
     }
 
     private fun handleGetResult(counter: Int, pt: ByteArray) {
-        // 0e 20 MM MM 03 01 SI PIlo PIhi 00 + fixed prop (00,len,type,val);
-        // single-byte values (unit, mode, battery) = last byte, multi-byte
-        // values are LE (see TLV in the case notes).
+        // Numeric: 0e 20 MM MM 03 01 SI PIlo PIhi 00 + fixed prop
+        // (00,len,type,val); single-byte values = last byte, multi-byte LE.
+        // String (siid 1 model/firmware): siid + piid-u16le + 5 header bytes,
+        // ASCII for the rest.
+        if (pt.size < 4 || pt[1] != 0x20.toByte()) {
+            return
+        }
+        val siid = if (pt.size > 6) pt[6].toInt() and 0xff else -1
+        if (siid == YunmaiMs107Spec.SIID_DEVICE_INFO && pt.size > 13) {
+            // String results come in two forms (both observed): raw ASCII
+            // tail (model) or A0-marked (firmware). Take the longest
+            // printable run.
+            val piid = (pt[7].toInt() and 0xff) or ((pt[8].toInt() and 0xff) shl 8)
+            var best = ""
+            var cur = StringBuilder()
+            for (i in 8 until pt.size) {
+                val c = pt[i].toInt() and 0xff
+                if (c in 32..126) {
+                    cur.append(c.toChar())
+                } else {
+                    if (cur.length > best.length) best = cur.toString()
+                    cur = StringBuilder()
+                }
+            }
+            if (cur.length > best.length) best = cur.toString()
+            if (best.length < 4) {
+                LOG.warn("REPORT ctr={} device-info unparseable", counter)
+                return
+            }
+            LOG.warn("REPORT ctr={} device-info piid={} {}", counter, piid, best)
+            when (piid) {
+                YunmaiMs107Spec.PIID_MODEL -> lastModel = best
+                YunmaiMs107Spec.PIID_FIRMWARE -> lastFirmware = best
+            }
+            publishVersion()
+            return
+        }
         if (pt.size != 14) {
             LOG.warn("REPORT ctr={} get-result len={}: {}", counter, pt.size, GB.hexdump(pt))
             return
         }
-        val siid = pt[6].toInt() and 0xff
         val piid = (pt[7].toInt() and 0xff) or ((pt[8].toInt() and 0xff) shl 8)
         val v = pt[13].toInt() and 0xff
         LOG.warn("REPORT ctr={} get siid={} piid={} val={}", counter, siid, piid, v)
+    }
+
+    private var lastModel: String? = null
+    private var lastFirmware: String? = null
+
+    private fun publishVersion() {
+        val fw = lastFirmware
+        val hw = lastModel
+        if (fw == null || hw == null) {
+            return
+        }
+        try {
+            val versionCmd = GBDeviceEventVersionInfo()
+            versionCmd.fwVersion = fw
+            versionCmd.hwVersion = hw
+            handleGBDeviceEvent(versionCmd)
+        } catch (e: Exception) {
+            LOG.debug("publishVersion failed: {}", e.message)
+        }
     }
 
     private fun handleOnlineData(counter: Int, pt: ByteArray) {
@@ -489,10 +546,14 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
             return
         }
         if ((pt[5].toInt() and 0xff) != YunmaiMs107Spec.SIID_ONLINE_DATA) {
-            LOG.warn(
-                "REPORT ctr={} non-scale op07 len={} siid={} head={}",
-                counter, pt.size, pt[5].toInt() and 0xff, GB.hexdump(pt.copyOfRange(0, 12.coerceAtMost(pt.size))),
-            )
+            if ((pt[5].toInt() and 0xff) == YunmaiMs107Spec.SIID_OFFLINE_DATA) {
+                handleOfflineCount(counter, pt)
+            } else {
+                LOG.warn(
+                    "REPORT ctr={} non-scale op07 len={} siid={} head={}",
+                    counter, pt.size, pt[5].toInt() and 0xff, GB.hexdump(pt.copyOfRange(0, 12.coerceAtMost(pt.size))),
+                )
+            }
             return
         }
         val evt = pt[6].toInt() and 0xff
@@ -522,6 +583,30 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
         } else {
             LOG.warn("REPORT ctr={} online-data evt={} piid={}: {}", counter, evt, piid, str)
         }
+    }
+
+    /**
+     * Offline count push (op07 siid 9, 14 B, value = last byte = piid 3
+     * offline-data-count). Recorded for display; record data itself is
+     * only fetched implicitly by the stock flow, never stored here.
+     */
+    private fun handleOfflineCount(counter: Int, pt: ByteArray) {
+        if (pt.size != 14) {
+            LOG.warn("REPORT ctr={} offline len={}", counter, pt.size)
+            return
+        }
+        val count = pt[13].toInt() and 0xff
+        LOG.warn("REPORT ctr={} offline records on scale: {}", counter, count)
+        try {
+            devicePrefs().edit().putInt(PREF_OFFLINE_COUNT, count).apply()
+        } catch (e: Exception) {
+            LOG.debug("offline count pref failed: {}", e.message)
+        }
+        GB.toast(
+            context.getString(R.string.yunmai_ms107_offline_count, count),
+            Toast.LENGTH_SHORT,
+            GB.INFO,
+        )
     }
 
     private fun handleCompleteRecord(counter: Int, str: String) {
@@ -667,6 +752,7 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
         val UUID_CHARACTERISTIC_FIRMWARE_VERSION: UUID = UUID.fromString(YunmaiMs107Spec.UUID_FIRMWARE_VERSION)
 
         const val PREF_SMALL_OBJECTS = "pref_miscale_small_objects"
+        const val PREF_OFFLINE_COUNT = "pref_yunmai_ms107_offline_count"
         private const val SMALL_OBJECT_MAX_KG = 10.0f
         private const val SCALE_RELEASE_DATE = 1521072000000L
 
