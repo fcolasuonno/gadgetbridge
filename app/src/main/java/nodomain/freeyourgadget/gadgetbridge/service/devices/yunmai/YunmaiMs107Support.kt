@@ -171,6 +171,10 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
         sendMiotCommand(YunmaiMs107Spec.buildWakeup(nextMsgId()))
         sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_SCALE, YunmaiMs107Spec.PIID_UNIT))
         sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_WORK_MODE, YunmaiMs107Spec.PIID_WORK_MODE))
+        // Plugin readDeviceBattery (siid 13/piid 10). The stock app was never
+        // observed sending it and the value semantics are unknown, so the
+        // reply (if any) is only logged by handleGetResult, never displayed.
+        sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_SYNCINFO, YunmaiMs107Spec.PIID_BATTERY))
     }
 
     private fun startLogin() {
@@ -536,7 +540,12 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
             sampleTs = System.currentTimeMillis()
         }
         val weightKg = tenthKg / 10.0f
-        LOG.warn("Weigh-in: {} kg at {}", weightKg, sampleTs)
+        // Impedance slot: plugin bodyRes (/10 ohms) at a wire-verified
+        // position; unit mapping is plugin-sourced, so range-gated.
+        // '-' sentinels (unavailable) fail toIntOrNull and stay null.
+        val tenthOhm = f[YunmaiMs107Spec.COMPLETE_IMPEDANCE_TENTH_OHM].toIntOrNull()
+        val impedanceOhm = tenthOhm?.div(10)?.takeIf { it in 100..1500 }
+        LOG.warn("Weigh-in: {} kg impedance={} at {}", weightKg, impedanceOhm, sampleTs)
         GB.toast(context.getString(R.string.weight_kg, weightKg), Toast.LENGTH_SHORT, GB.INFO)
         try {
             val prefs = devicePrefs()
@@ -553,7 +562,8 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
                 val sample = MiScaleWeightSample()
                 sample.timestamp = sampleTs
                 sample.weightKg = weightKg
-                // Impedance/HR slots are not verified on the wire; left null.
+                sample.impedanceOhm = impedanceOhm
+                // HR/composition slots: no GB store target in v1.
                 provider.persistSamples(sample, context)
                 GB.signalActivityDataFinish(gbDevice)
             }

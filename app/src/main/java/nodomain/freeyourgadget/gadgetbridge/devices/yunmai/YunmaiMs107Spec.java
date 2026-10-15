@@ -89,12 +89,17 @@ public final class YunmaiMs107Spec {
     public static final int PIID_UNIT = 1;
     /** siid 10 piid 1 work mode (0 Regular, 1 Baby, 2 Balance, 3 Visitor, 4 Once). */
     public static final int PIID_WORK_MODE = 1;
+    /** siid 13 syncinfo piid 10 battery (plugin readDeviceBattery; wire reply unobserved). */
+    public static final int SIID_SYNCINFO = 13;
+    public static final int PIID_BATTERY = 10;
     /** siid 8 online-data: piid 1 weight-data, piid 2 body-composition. */
     public static final int SIID_ONLINE_DATA = 8;
 
     /** Complete-record field indexes (plugin MeasureComplete order). */
     public static final int COMPLETE_WEIGHT_TENTH_KG = 3;
     public static final int COMPLETE_TIME_SEC = 6;
+    /** Body impedance slot (plugin bodyRes, /10 ohms; unit plugin-sourced). */
+    public static final int COMPLETE_IMPEDANCE_TENTH_OHM = 30;
     public static final int COMPLETE_FIELD_COUNT = 32;
 
     /** Build the 8-byte wakeup action (op 0x05, siid 10 aiid 1, no args). msgId is patched by the caller. */
