@@ -167,14 +167,13 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
     }
 
     private fun refreshBasic() {
+        // Stock-observed bytes only: capability, wakeup, unit + work-mode
+        // gets. (siid-13 syncinfo and siid-9 offline props are verified
+        // silent to gets; siid-6 user props are readable but unused.)
         sendMiotCommand(YunmaiMs107Spec.buildCapability(nextMsgId()))
         sendMiotCommand(YunmaiMs107Spec.buildWakeup(nextMsgId()))
         sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_SCALE, YunmaiMs107Spec.PIID_UNIT))
         sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_WORK_MODE, YunmaiMs107Spec.PIID_WORK_MODE))
-        // Plugin readDeviceBattery (siid 13/piid 10). The stock app was never
-        // observed sending it and the value semantics are unknown, so the
-        // reply (if any) is only logged by handleGetResult, never displayed.
-        sendMiotCommand(YunmaiMs107Spec.buildGet(nextMsgId(), YunmaiMs107Spec.SIID_SYNCINFO, YunmaiMs107Spec.PIID_BATTERY))
     }
 
     private fun startLogin() {
