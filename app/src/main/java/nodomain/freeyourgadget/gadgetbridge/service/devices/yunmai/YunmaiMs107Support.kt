@@ -468,7 +468,9 @@ class YunmaiMs107Support : AbstractBTLESingleDeviceSupport(LOG), SharedPreferenc
     }
 
     private fun handleGetResult(counter: Int, pt: ByteArray) {
-        // 0e 20 MM MM 03 01 SI PIlo PIhi 00 00 01 10 VV (verified): value = last byte.
+        // 0e 20 MM MM 03 01 SI PIlo PIhi 00 + fixed prop (00,len,type,val);
+        // single-byte values (unit, mode, battery) = last byte, multi-byte
+        // values are LE (see TLV in the case notes).
         if (pt.size != 14) {
             LOG.warn("REPORT ctr={} get-result len={}: {}", counter, pt.size, GB.hexdump(pt))
             return
