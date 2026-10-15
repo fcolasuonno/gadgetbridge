@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <EditTextPreference
+        android:icon="@drawable/ic_vpn_key"
+        android:key="authkey"
+        android:title="@string/yunmai_ms107_bind_key_title"
+        android:summary="@string/yunmai_ms107_bind_key_summary"
+        android:dialogTitle="@string/yunmai_ms107_bind_key_title"
+        android:singleLine="true"
+        android:persistent="true" />
+    <SwitchPreferenceCompat
+        android:key="pref_miscale_small_objects"
+        android:title="@string/miscale_small_objects_title"
+        android:summary="@string/miscale_small_objects_summary"
+        android:defaultValue="false"
+        android:persistent="true" />
+</androidx.preference.PreferenceScreen>

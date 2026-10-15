@@ -642,6 +642,7 @@ import nodomain.freeyourgadget.gadgetbridge.devices.yawell.ring.H59Coordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.yawell.ring.YawellR05Coordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.yawell.ring.YawellR10Coordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.yawell.ring.YawellR11Coordinator;
+import nodomain.freeyourgadget.gadgetbridge.devices.yunmai.YunmaiMs107Coordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.zendure.SolarFlowDeviceCoordinator;
 import nodomain.freeyourgadget.gadgetbridge.devices.zetime.ZeTimeCoordinator;
 import nodomain.freeyourgadget.gadgetbridge.service.devices.gatt_client.BleGattClientCoordinator;
@@ -815,6 +816,7 @@ public enum DeviceType {
     MIJIA_LYWSD03(MijiaLywsd03Coordinator.class),
     MIJIA_XMWSDJ04(MijiaXmwsdj04Coordinator.class),
     MIJIA_MHO_C303(MijiaMhoC303Coordinator.class),
+    YUNMAI_MS107(YunmaiMs107Coordinator.class),
     LEFUN(LefunDeviceCoordinator.class),
     VIVITAR_HR_BP_MONITOR_ACTIVITY_TRACKER(VivitarHrBpMonitorActivityTrackerCoordinator.class),
     BOHEMIC_SMART_BRACELET(BohemicSmartBraceletDeviceCoordinator.class),
